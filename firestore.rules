@@ -1,0 +1,112 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: applications
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - age: number (required, 16-100)
+    //   - height: number (required, 100-250)
+    //   - city: string (required, 1-100 chars)
+    //   - email: string (required, valid email)
+    //   - phone: string (required, 5-20 chars)
+    //   - experience: string (required, in ['none', 'some', 'experienced'])
+    //   - instagram: string (optional, 0-100 chars)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: contact_messages
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - email: string (required, valid email)
+    //   - subject: string (required, 1-150 chars)
+    //   - message: string (required, 1-2000 chars)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "reelscast341@gmail.com" && request.auth.token.email_verified == true
+      );
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidApplication(data) {
+      return hasRequiredFields(['name', 'age', 'height', 'city', 'email', 'phone', 'experience', 'createdAt']) &&
+             hasOnlyAllowedFields(['name', 'age', 'height', 'city', 'email', 'phone', 'experience', 'instagram', 'createdAt']) &&
+             validStringLength('name', 1, 100) &&
+             data.age is number && data.age >= 16 && data.age <= 100 &&
+             data.height is number && data.height >= 100 && data.height <= 250 &&
+             validStringLength('city', 1, 100) &&
+             isValidEmail(data.email) &&
+             validStringLength('phone', 5, 20) &&
+             data.experience in ['none', 'some', 'experienced'] &&
+             (!('instagram' in data) || (data.instagram is string && data.instagram.size() <= 100)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidContactMessage(data) {
+      return hasRequiredFields(['name', 'email', 'subject', 'message', 'createdAt']) &&
+             hasOnlyAllowedFields(['name', 'email', 'subject', 'message', 'createdAt']) &&
+             validStringLength('name', 1, 100) &&
+             isValidEmail(data.email) &&
+             validStringLength('subject', 1, 150) &&
+             validStringLength('message', 1, 2000) &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /applications/{applicationId} {
+      // Anyone can submit an application
+      allow create: if isValidApplication(request.resource.data);
+      // Only admins can read, update, or delete applications
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /contact_messages/{messageId} {
+      // Anyone can submit a contact message
+      allow create: if isValidContactMessage(request.resource.data);
+      // Only admins can read, update, or delete messages
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}
